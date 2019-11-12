@@ -1,362 +1,523 @@
 package org.reactnative.camera;
 
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
+import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.media.CamcorderProfile;
+import android.media.MediaActionSound;
 import android.os.Build;
-import android.view.ViewGroup;
+import android.view.View;
+import android.os.AsyncTask;
 
-import androidx.exifinterface.media.ExifInterface;
+import androidx.core.content.ContextCompat;
 
-import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.ReadableMapKeySetIterator;
-import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.WritableArray;
-import com.facebook.react.uimanager.UIManagerModule;
+import com.facebook.react.bridge.*;
+import com.facebook.react.uimanager.ThemedReactContext;
 import com.google.android.cameraview.CameraView;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.DecodeHintType;
+import com.google.zxing.MultiFormatReader;
 import com.google.zxing.Result;
-import org.reactnative.camera.events.*;
 import org.reactnative.barcodedetector.RNBarcodeDetector;
+import org.reactnative.camera.tasks.*;
+import org.reactnative.camera.utils.RNFileUtils;
 import org.reactnative.facedetector.RNFaceDetector;
 
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class RNCameraViewHelper {
+public class RNCameraView extends CameraView implements LifecycleEventListener, BarCodeScannerAsyncTaskDelegate, FaceDetectorAsyncTaskDelegate,
+    BarcodeDetectorAsyncTaskDelegate, TextRecognizerAsyncTaskDelegate, PictureSavedDelegate {
+  private ThemedReactContext mThemedReactContext;
+  private Queue<Promise> mPictureTakenPromises = new ConcurrentLinkedQueue<>();
+  private Map<Promise, ReadableMap> mPictureTakenOptions = new ConcurrentHashMap<>();
+  private Map<Promise, File> mPictureTakenDirectories = new ConcurrentHashMap<>();
+  private Promise mVideoRecordedPromise;
+  private List<String> mBarCodeTypes = null;
+  private Boolean mPlaySoundOnCapture = false;
 
-  public static final String[][] exifTags = new String[][]{
-      {"string", ExifInterface.TAG_ARTIST},
-      {"int", ExifInterface.TAG_BITS_PER_SAMPLE},
-      {"int", ExifInterface.TAG_COMPRESSION},
-      {"string", ExifInterface.TAG_COPYRIGHT},
-      {"string", ExifInterface.TAG_DATETIME},
-      {"string", ExifInterface.TAG_IMAGE_DESCRIPTION},
-      {"int", ExifInterface.TAG_IMAGE_LENGTH},
-      {"int", ExifInterface.TAG_IMAGE_WIDTH},
-      {"int", ExifInterface.TAG_JPEG_INTERCHANGE_FORMAT},
-      {"int", ExifInterface.TAG_JPEG_INTERCHANGE_FORMAT_LENGTH},
-      {"string", ExifInterface.TAG_MAKE},
-      {"string", ExifInterface.TAG_MODEL},
-      {"int", ExifInterface.TAG_ORIENTATION},
-      {"int", ExifInterface.TAG_PHOTOMETRIC_INTERPRETATION},
-      {"int", ExifInterface.TAG_PLANAR_CONFIGURATION},
-      {"double", ExifInterface.TAG_PRIMARY_CHROMATICITIES},
-      {"double", ExifInterface.TAG_REFERENCE_BLACK_WHITE},
-      {"int", ExifInterface.TAG_RESOLUTION_UNIT},
-      {"int", ExifInterface.TAG_ROWS_PER_STRIP},
-      {"int", ExifInterface.TAG_SAMPLES_PER_PIXEL},
-      {"string", ExifInterface.TAG_SOFTWARE},
-      {"int", ExifInterface.TAG_STRIP_BYTE_COUNTS},
-      {"int", ExifInterface.TAG_STRIP_OFFSETS},
-      {"int", ExifInterface.TAG_TRANSFER_FUNCTION},
-      {"double", ExifInterface.TAG_WHITE_POINT},
-      {"double", ExifInterface.TAG_X_RESOLUTION},
-      {"double", ExifInterface.TAG_Y_CB_CR_COEFFICIENTS},
-      {"int", ExifInterface.TAG_Y_CB_CR_POSITIONING},
-      {"int", ExifInterface.TAG_Y_CB_CR_SUB_SAMPLING},
-      {"double", ExifInterface.TAG_Y_RESOLUTION},
-      {"double", ExifInterface.TAG_APERTURE_VALUE},
-      {"double", ExifInterface.TAG_BRIGHTNESS_VALUE},
-      {"string", ExifInterface.TAG_CFA_PATTERN},
-      {"int", ExifInterface.TAG_COLOR_SPACE},
-      {"string", ExifInterface.TAG_COMPONENTS_CONFIGURATION},
-      {"double", ExifInterface.TAG_COMPRESSED_BITS_PER_PIXEL},
-      {"int", ExifInterface.TAG_CONTRAST},
-      {"int", ExifInterface.TAG_CUSTOM_RENDERED},
-      {"string", ExifInterface.TAG_DATETIME_DIGITIZED},
-      {"string", ExifInterface.TAG_DATETIME_ORIGINAL},
-      {"string", ExifInterface.TAG_DEVICE_SETTING_DESCRIPTION},
-      {"double", ExifInterface.TAG_DIGITAL_ZOOM_RATIO},
-      {"string", ExifInterface.TAG_EXIF_VERSION},
-      {"double", ExifInterface.TAG_EXPOSURE_BIAS_VALUE},
-      {"double", ExifInterface.TAG_EXPOSURE_INDEX},
-      {"int", ExifInterface.TAG_EXPOSURE_MODE},
-      {"int", ExifInterface.TAG_EXPOSURE_PROGRAM},
-      {"double", ExifInterface.TAG_EXPOSURE_TIME},
-      {"double", ExifInterface.TAG_F_NUMBER},
-      {"string", ExifInterface.TAG_FILE_SOURCE},
-      {"int", ExifInterface.TAG_FLASH},
-      {"double", ExifInterface.TAG_FLASH_ENERGY},
-      {"string", ExifInterface.TAG_FLASHPIX_VERSION},
-      {"double", ExifInterface.TAG_FOCAL_LENGTH},
-      {"int", ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM},
-      {"int", ExifInterface.TAG_FOCAL_PLANE_RESOLUTION_UNIT},
-      {"double", ExifInterface.TAG_FOCAL_PLANE_X_RESOLUTION},
-      {"double", ExifInterface.TAG_FOCAL_PLANE_Y_RESOLUTION},
-      {"int", ExifInterface.TAG_GAIN_CONTROL},
-      {"int", ExifInterface.TAG_ISO_SPEED_RATINGS},
-      {"string", ExifInterface.TAG_IMAGE_UNIQUE_ID},
-      {"int", ExifInterface.TAG_LIGHT_SOURCE},
-      {"string", ExifInterface.TAG_MAKER_NOTE},
-      {"double", ExifInterface.TAG_MAX_APERTURE_VALUE},
-      {"int", ExifInterface.TAG_METERING_MODE},
-      {"int", ExifInterface.TAG_NEW_SUBFILE_TYPE},
-      {"string", ExifInterface.TAG_OECF},
-      {"int", ExifInterface.TAG_PIXEL_X_DIMENSION},
-      {"int", ExifInterface.TAG_PIXEL_Y_DIMENSION},
-      {"string", ExifInterface.TAG_RELATED_SOUND_FILE},
-      {"int", ExifInterface.TAG_SATURATION},
-      {"int", ExifInterface.TAG_SCENE_CAPTURE_TYPE},
-      {"string", ExifInterface.TAG_SCENE_TYPE},
-      {"int", ExifInterface.TAG_SENSING_METHOD},
-      {"int", ExifInterface.TAG_SHARPNESS},
-      {"double", ExifInterface.TAG_SHUTTER_SPEED_VALUE},
-      {"string", ExifInterface.TAG_SPATIAL_FREQUENCY_RESPONSE},
-      {"string", ExifInterface.TAG_SPECTRAL_SENSITIVITY},
-      {"int", ExifInterface.TAG_SUBFILE_TYPE},
-      {"string", ExifInterface.TAG_SUBSEC_TIME},
-      {"string", ExifInterface.TAG_SUBSEC_TIME_DIGITIZED},
-      {"string", ExifInterface.TAG_SUBSEC_TIME_ORIGINAL},
-      {"int", ExifInterface.TAG_SUBJECT_AREA},
-      {"double", ExifInterface.TAG_SUBJECT_DISTANCE},
-      {"int", ExifInterface.TAG_SUBJECT_DISTANCE_RANGE},
-      {"int", ExifInterface.TAG_SUBJECT_LOCATION},
-      {"string", ExifInterface.TAG_USER_COMMENT},
-      {"int", ExifInterface.TAG_WHITE_BALANCE},
-      {"int", ExifInterface.TAG_GPS_ALTITUDE_REF},
-      {"string", ExifInterface.TAG_GPS_AREA_INFORMATION},
-      {"double", ExifInterface.TAG_GPS_DOP},
-      {"string", ExifInterface.TAG_GPS_DATESTAMP},
-      {"double", ExifInterface.TAG_GPS_DEST_BEARING},
-      {"string", ExifInterface.TAG_GPS_DEST_BEARING_REF},
-      {"double", ExifInterface.TAG_GPS_DEST_DISTANCE},
-      {"string", ExifInterface.TAG_GPS_DEST_DISTANCE_REF},
-      {"double", ExifInterface.TAG_GPS_DEST_LATITUDE},
-      {"string", ExifInterface.TAG_GPS_DEST_LATITUDE_REF},
-      {"double", ExifInterface.TAG_GPS_DEST_LONGITUDE},
-      {"string", ExifInterface.TAG_GPS_DEST_LONGITUDE_REF},
-      {"int", ExifInterface.TAG_GPS_DIFFERENTIAL},
-      {"double", ExifInterface.TAG_GPS_IMG_DIRECTION},
-      {"string", ExifInterface.TAG_GPS_IMG_DIRECTION_REF},
-      {"string", ExifInterface.TAG_GPS_LATITUDE_REF},
-      {"string", ExifInterface.TAG_GPS_LONGITUDE_REF},
-      {"string", ExifInterface.TAG_GPS_MAP_DATUM},
-      {"string", ExifInterface.TAG_GPS_MEASURE_MODE},
-      {"string", ExifInterface.TAG_GPS_PROCESSING_METHOD},
-      {"string", ExifInterface.TAG_GPS_SATELLITES},
-      {"double", ExifInterface.TAG_GPS_SPEED},
-      {"string", ExifInterface.TAG_GPS_SPEED_REF},
-      {"string", ExifInterface.TAG_GPS_STATUS},
-      {"string", ExifInterface.TAG_GPS_TIMESTAMP},
-      {"double", ExifInterface.TAG_GPS_TRACK},
-      {"string", ExifInterface.TAG_GPS_TRACK_REF},
-      {"string", ExifInterface.TAG_GPS_VERSION_ID},
-      {"string", ExifInterface.TAG_INTEROPERABILITY_INDEX},
-      {"int", ExifInterface.TAG_THUMBNAIL_IMAGE_LENGTH},
-      {"int", ExifInterface.TAG_THUMBNAIL_IMAGE_WIDTH},
-      {"int", ExifInterface.TAG_DNG_VERSION},
-      {"int", ExifInterface.TAG_DEFAULT_CROP_SIZE},
-      {"int", ExifInterface.TAG_ORF_PREVIEW_IMAGE_START},
-      {"int", ExifInterface.TAG_ORF_PREVIEW_IMAGE_LENGTH},
-      {"int", ExifInterface.TAG_ORF_ASPECT_FRAME},
-      {"int", ExifInterface.TAG_RW2_SENSOR_BOTTOM_BORDER},
-      {"int", ExifInterface.TAG_RW2_SENSOR_LEFT_BORDER},
-      {"int", ExifInterface.TAG_RW2_SENSOR_RIGHT_BORDER},
-      {"int", ExifInterface.TAG_RW2_SENSOR_TOP_BORDER},
-      {"int", ExifInterface.TAG_RW2_ISO},
-  };
-  // Mount error event
+  private boolean mIsPaused = false;
+  private boolean mIsNew = true;
+  private boolean invertImageData = false;
+  private Boolean mIsRecording = false;
+  private Boolean mIsRecordingInterrupted = false;
 
-  public static void emitMountErrorEvent(ViewGroup view, String error) {
-    CameraMountErrorEvent event = CameraMountErrorEvent.obtain(view.getId(), error);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
+  // Concurrency lock for scanners to avoid flooding the runtime
+  public volatile boolean barCodeScannerTaskLock = false;
+  public volatile boolean faceDetectorTaskLock = false;
+  public volatile boolean googleBarcodeDetectorTaskLock = false;
+  public volatile boolean textRecognizerTaskLock = false;
+
+  // Scanning-related properties
+  private MultiFormatReader mMultiFormatReader;
+  private RNFaceDetector mFaceDetector;
+  private RNBarcodeDetector mGoogleBarcodeDetector;
+  private boolean mShouldDetectFaces = false;
+  private boolean mShouldGoogleDetectBarcodes = false;
+  private boolean mShouldScanBarCodes = false;
+  private boolean mShouldRecognizeText = false;
+  private int mFaceDetectorMode = RNFaceDetector.FAST_MODE;
+  private int mFaceDetectionLandmarks = RNFaceDetector.NO_LANDMARKS;
+  private int mFaceDetectionClassifications = RNFaceDetector.NO_CLASSIFICATIONS;
+  private int mGoogleVisionBarCodeType = RNBarcodeDetector.ALL_FORMATS;
+  private int mGoogleVisionBarCodeMode = RNBarcodeDetector.NORMAL_MODE;
+  private boolean mTrackingEnabled = true;
+  private int mPaddingX;
+  private int mPaddingY;
+
+  public RNCameraView(ThemedReactContext themedReactContext) {
+    super(themedReactContext, true);
+    mThemedReactContext = themedReactContext;
+    themedReactContext.addLifecycleEventListener(this);
+
+    addCallback(new Callback() {
+      @Override
+      public void onCameraOpened(CameraView cameraView) {
+        RNCameraViewHelper.emitCameraReadyEvent(cameraView);
+      }
+
+      @Override
+      public void onMountError(CameraView cameraView) {
+        RNCameraViewHelper.emitMountErrorEvent(cameraView, "Camera view threw an error - component could not be rendered.");
+      }
+
+      @Override
+      public void onPictureTaken(CameraView cameraView, final byte[] data, int deviceOrientation) {
+        Promise promise = mPictureTakenPromises.poll();
+        ReadableMap options = mPictureTakenOptions.remove(promise);
+        if (options.hasKey("fastMode") && options.getBoolean("fastMode")) {
+            promise.resolve(null);
+        }
+        final File cacheDirectory = mPictureTakenDirectories.remove(promise);
+        if(Build.VERSION.SDK_INT >= 11/*HONEYCOMB*/) {
+          new ResolveTakenPictureAsyncTask(data, promise, options, cacheDirectory, deviceOrientation, RNCameraView.this)
+                  .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        } else {
+          new ResolveTakenPictureAsyncTask(data, promise, options, cacheDirectory, deviceOrientation, RNCameraView.this)
+                  .execute();
+        }
+        RNCameraViewHelper.emitPictureTakenEvent(cameraView);
+      }
+
+      @Override
+      public void onVideoRecorded(CameraView cameraView, String path, int videoOrientation, int deviceOrientation) {
+        if (mVideoRecordedPromise != null) {
+          if (path != null) {
+            WritableMap result = Arguments.createMap();
+            result.putBoolean("isRecordingInterrupted", mIsRecordingInterrupted);
+            result.putInt("videoOrientation", videoOrientation);
+            result.putInt("deviceOrientation", deviceOrientation);
+            result.putString("uri", RNFileUtils.uriFromFile(new File(path)).toString());
+            mVideoRecordedPromise.resolve(result);
+          } else {
+            mVideoRecordedPromise.reject("E_RECORDING", "Couldn't stop recording - there is none in progress");
+          }
+          mIsRecording = false;
+          mIsRecordingInterrupted = false;
+          mVideoRecordedPromise = null;
+        }
+      }
+
+      @Override
+      public void onFramePreview(CameraView cameraView, byte[] data, int width, int height, int rotation) {
+        int correctRotation = RNCameraViewHelper.getCorrectCameraRotation(rotation, getFacing(), getCameraOrientation());
+        boolean willCallBarCodeTask = mShouldScanBarCodes && !barCodeScannerTaskLock && cameraView instanceof BarCodeScannerAsyncTaskDelegate;
+        boolean willCallFaceTask = mShouldDetectFaces && !faceDetectorTaskLock && cameraView instanceof FaceDetectorAsyncTaskDelegate;
+        boolean willCallGoogleBarcodeTask = mShouldGoogleDetectBarcodes && !googleBarcodeDetectorTaskLock && cameraView instanceof BarcodeDetectorAsyncTaskDelegate;
+        boolean willCallTextTask = mShouldRecognizeText && !textRecognizerTaskLock && cameraView instanceof TextRecognizerAsyncTaskDelegate;
+        if (!willCallBarCodeTask && !willCallFaceTask && !willCallGoogleBarcodeTask && !willCallTextTask) {
+          return;
+        }
+
+        if (data.length < (1.5 * width * height)) {
+            return;
+        }
+
+        if (willCallBarCodeTask) {
+          barCodeScannerTaskLock = true;
+          BarCodeScannerAsyncTaskDelegate delegate = (BarCodeScannerAsyncTaskDelegate) cameraView;
+          new BarCodeScannerAsyncTask(delegate, mMultiFormatReader, data, width, height).execute();
+        }
+
+        if (willCallFaceTask) {
+          faceDetectorTaskLock = true;
+          FaceDetectorAsyncTaskDelegate delegate = (FaceDetectorAsyncTaskDelegate) cameraView;
+          new FaceDetectorAsyncTask(delegate, mFaceDetector, data, width, height, correctRotation, getResources().getDisplayMetrics().density, getFacing(), getWidth(), getHeight(), mPaddingX, mPaddingY).execute();
+        }
+
+        if (willCallGoogleBarcodeTask) {
+          googleBarcodeDetectorTaskLock = true;
+          if (mGoogleVisionBarCodeMode == RNBarcodeDetector.NORMAL_MODE) {
+            invertImageData = false;
+          } else if (mGoogleVisionBarCodeMode == RNBarcodeDetector.ALTERNATE_MODE) {
+            invertImageData = !invertImageData;
+          } else if (mGoogleVisionBarCodeMode == RNBarcodeDetector.INVERTED_MODE) {
+            invertImageData = true;
+          }
+          if (invertImageData) {
+            for (int y = 0; y < data.length; y++) {
+              data[y] = (byte) ~data[y];
+            }
+          }
+          BarcodeDetectorAsyncTaskDelegate delegate = (BarcodeDetectorAsyncTaskDelegate) cameraView;
+          new BarcodeDetectorAsyncTask(delegate, mGoogleBarcodeDetector, data, width, height, correctRotation, getResources().getDisplayMetrics().density, getFacing(), getWidth(), getHeight(), mPaddingX, mPaddingY).execute();
+        }
+
+        if (willCallTextTask) {
+          textRecognizerTaskLock = true;
+          TextRecognizerAsyncTaskDelegate delegate = (TextRecognizerAsyncTaskDelegate) cameraView;
+          new TextRecognizerAsyncTask(delegate, mThemedReactContext, data, width, height, correctRotation, getResources().getDisplayMetrics().density, getFacing(), getWidth(), getHeight(), mPaddingX, mPaddingY).execute();
+        }
+      }
+    });
   }
 
-  // Camera ready event
-
-  public static void emitCameraReadyEvent(ViewGroup view) {
-    CameraReadyEvent event = CameraReadyEvent.obtain(view.getId());
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Picture saved event
-
-  public static void emitPictureSavedEvent(ViewGroup view, WritableMap response) {
-    PictureSavedEvent event = PictureSavedEvent.obtain(view.getId(), response);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Picture taken event
-
-  public static void emitPictureTakenEvent(ViewGroup view) {
-    PictureTakenEvent event = PictureTakenEvent.obtain(view.getId());
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Face detection events
-
-  public static void emitFacesDetectedEvent(ViewGroup view, WritableArray data) {
-    FacesDetectedEvent event = FacesDetectedEvent.obtain(view.getId(), data);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  public static void emitFaceDetectionErrorEvent(ViewGroup view, RNFaceDetector faceDetector) {
-    FaceDetectionErrorEvent event = FaceDetectionErrorEvent.obtain(view.getId(), faceDetector);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Barcode detection events
-
-  public static void emitBarcodesDetectedEvent(ViewGroup view, WritableArray barcodes) {
-    BarcodesDetectedEvent event = BarcodesDetectedEvent.obtain(view.getId(), barcodes);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  public static void emitBarcodeDetectionErrorEvent(ViewGroup view, RNBarcodeDetector barcodeDetector) {
-    BarcodeDetectionErrorEvent event = BarcodeDetectionErrorEvent.obtain(view.getId(), barcodeDetector);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Bar code read event
-
-  public static void emitBarCodeReadEvent(ViewGroup view, Result barCode, int width, int height) {
-    BarCodeReadEvent event = BarCodeReadEvent.obtain(view.getId(), barCode, width,  height);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Text recognition event
-
-  public static void emitTextRecognizedEvent(ViewGroup view, WritableArray data) {
-    TextRecognizedEvent event = TextRecognizedEvent.obtain(view.getId(), data);
-    ReactContext reactContext = (ReactContext) view.getContext();
-    reactContext.getNativeModule(UIManagerModule.class).getEventDispatcher().dispatchEvent(event);
-  }
-
-  // Utilities
-
-  public static int getCorrectCameraRotation(int rotation, int facing, int cameraOrientation) {
-    if (facing == CameraView.FACING_FRONT) {
-      // Tested the below line and there's no need to do the mirror calculation
-      return (cameraOrientation + rotation) % 360;
+  @Override
+  protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    View preview = getView();
+    if (null == preview) {
+      return;
+    }
+    float width = right - left;
+    float height = bottom - top;
+    float ratio = getAspectRatio().toFloat();
+    int orientation = getResources().getConfiguration().orientation;
+    int correctHeight;
+    int correctWidth;
+    this.setBackgroundColor(Color.BLACK);
+    if (orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+      if (ratio * height < width) {
+        correctHeight = (int) (width / ratio);
+        correctWidth = (int) width;
+      } else {
+        correctWidth = (int) (height * ratio);
+        correctHeight = (int) height;
+      }
     } else {
-      final int landscapeFlip = rotationIsLandscape(rotation) ? 180 : 0;
-      return (cameraOrientation - rotation + landscapeFlip) % 360;
-    }
-  }
-
-  private static boolean rotationIsLandscape(int rotation) {
-    return (rotation == Constants.LANDSCAPE_90 ||
-            rotation == Constants.LANDSCAPE_270);
-  }
-
-  private static int getCamcorderProfileQualityFromCameraModuleConstant(int quality) {
-    switch (quality) {
-      case CameraModule.VIDEO_2160P:
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-          return CamcorderProfile.QUALITY_2160P;
-        }
-      case CameraModule.VIDEO_1080P:
-        return CamcorderProfile.QUALITY_1080P;
-      case CameraModule.VIDEO_720P:
-        return CamcorderProfile.QUALITY_720P;
-      case CameraModule.VIDEO_480P:
-        return CamcorderProfile.QUALITY_480P;
-      case CameraModule.VIDEO_4x3:
-        return CamcorderProfile.QUALITY_480P;
-    }
-    return CamcorderProfile.QUALITY_HIGH;
-  }
-
-  public static CamcorderProfile getCamcorderProfile(int quality) {
-    CamcorderProfile profile = CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH);
-    int camcorderQuality = getCamcorderProfileQualityFromCameraModuleConstant(quality);
-    if (CamcorderProfile.hasProfile(camcorderQuality)) {
-      profile = CamcorderProfile.get(camcorderQuality);
-      if (quality == CameraModule.VIDEO_4x3) {
-        profile.videoFrameWidth = 640;
+      if (ratio * width > height) {
+        correctHeight = (int) (width * ratio);
+        correctWidth = (int) width;
+      } else {
+        correctWidth = (int) (height / ratio);
+        correctHeight = (int) height;
       }
     }
-    return profile;
+    int paddingX = (int) ((width - correctWidth) / 2);
+    int paddingY = (int) ((height - correctHeight) / 2);
+    mPaddingX = paddingX;
+    mPaddingY = paddingY;
+    preview.layout(paddingX, paddingY, correctWidth + paddingX, correctHeight + paddingY);
   }
 
-  public static WritableMap getExifData(ExifInterface exifInterface) {
-    WritableMap exifMap = Arguments.createMap();
-    for (String[] tagInfo : exifTags) {
-      String name = tagInfo[1];
-      if (exifInterface.getAttribute(name) != null) {
-        String type = tagInfo[0];
-        switch (type) {
-          case "string":
-            exifMap.putString(name, exifInterface.getAttribute(name));
-            break;
-          case "int":
-            exifMap.putInt(name, exifInterface.getAttributeInt(name, 0));
-            break;
-          case "double":
-            exifMap.putDouble(name, exifInterface.getAttributeDouble(name, 0));
-            break;
+  @SuppressLint("all")
+  @Override
+  public void requestLayout() {
+    // React handles this for us, so we don't need to call super.requestLayout();
+  }
+
+  public void setBarCodeTypes(List<String> barCodeTypes) {
+    mBarCodeTypes = barCodeTypes;
+    initBarcodeReader();
+  }
+
+  public void setPlaySoundOnCapture(Boolean playSoundOnCapture) {
+    mPlaySoundOnCapture = playSoundOnCapture;
+  }
+
+  public void takePicture(ReadableMap options, final Promise promise, File cacheDirectory) {
+    mPictureTakenPromises.add(promise);
+    mPictureTakenOptions.put(promise, options);
+    mPictureTakenDirectories.put(promise, cacheDirectory);
+    if (mPlaySoundOnCapture) {
+      MediaActionSound sound = new MediaActionSound();
+      sound.play(MediaActionSound.SHUTTER_CLICK);
+    }
+    try {
+      super.takePicture(options);
+    } catch (Exception e) {
+      mPictureTakenPromises.remove(promise);
+      mPictureTakenOptions.remove(promise);
+      mPictureTakenDirectories.remove(promise);
+      throw e;
+    }
+  }
+
+  @Override
+  public void onPictureSaved(WritableMap response) {
+    RNCameraViewHelper.emitPictureSavedEvent(this, response);
+  }
+
+  public void record(ReadableMap options, final Promise promise, File cacheDirectory) {
+    try {
+      String path = options.hasKey("path") ? options.getString("path") : RNFileUtils.getOutputFilePath(cacheDirectory, ".mp4");
+      int maxDuration = options.hasKey("maxDuration") ? options.getInt("maxDuration") : -1;
+      int maxFileSize = options.hasKey("maxFileSize") ? options.getInt("maxFileSize") : -1;
+
+      CamcorderProfile profile = CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH);
+      if (options.hasKey("quality")) {
+        profile = RNCameraViewHelper.getCamcorderProfile(options.getInt("quality"));
+      }
+      if (options.hasKey("videoBitrate")) {
+        profile.videoBitRate = options.getInt("videoBitrate");
+      }
+
+      boolean recordAudio = true;
+      if (options.hasKey("mute")) {
+        recordAudio = !options.getBoolean("mute");
+      }
+
+      int orientation = Constants.ORIENTATION_AUTO;
+      if (options.hasKey("orientation")) {
+        orientation = options.getInt("orientation");
+      }
+
+      if (super.record(path, maxDuration * 1000, maxFileSize, recordAudio, profile, orientation)) {
+        mIsRecording = true;
+        mVideoRecordedPromise = promise;
+      } else {
+        promise.reject("E_RECORDING_FAILED", "Starting video recording failed. Another recording might be in progress.");
+      }
+    } catch (IOException e) {
+      promise.reject("E_RECORDING_FAILED", "Starting video recording failed - could not create video file.");
+    }
+  }
+
+  /**
+   * Initialize the barcode decoder.
+   * Supports all iOS codes except [code138, code39mod43, itf14]
+   * Additionally supports [codabar, code128, maxicode, rss14, rssexpanded, upc_a, upc_ean]
+   */
+  private void initBarcodeReader() {
+    mMultiFormatReader = new MultiFormatReader();
+    EnumMap<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
+    EnumSet<BarcodeFormat> decodeFormats = EnumSet.noneOf(BarcodeFormat.class);
+
+    if (mBarCodeTypes != null) {
+      for (String code : mBarCodeTypes) {
+        String formatString = (String) CameraModule.VALID_BARCODE_TYPES.get(code);
+        if (formatString != null) {
+          decodeFormats.add(BarcodeFormat.valueOf(formatString));
         }
       }
     }
 
-    double[] latLong = exifInterface.getLatLong();
-    if (latLong != null) {
-      exifMap.putDouble(ExifInterface.TAG_GPS_LATITUDE, latLong[0]);
-      exifMap.putDouble(ExifInterface.TAG_GPS_LONGITUDE, latLong[1]);
-      exifMap.putDouble(ExifInterface.TAG_GPS_ALTITUDE, exifInterface.getAltitude(0));
-    }
-
-    return exifMap;
+    hints.put(DecodeHintType.POSSIBLE_FORMATS, decodeFormats);
+    mMultiFormatReader.setHints(hints);
   }
 
-  public static void setExifData(ExifInterface exifInterface, WritableMap exifMap) {
-    for (String[] tagInfo : exifTags) {
-      String name = tagInfo[1];
-      if (exifMap.hasKey(name)) {
-        String type = tagInfo[0];
-        switch (type) {
-          case "string":
-            exifInterface.setAttribute(name, exifMap.getString(name));
-            break;
-          case "int":
-            exifInterface.setAttribute(name, Integer.toString(exifMap.getInt(name)));
-            exifMap.getInt(name);
-            break;
-          case "double":
-            exifInterface.setAttribute(name, Double.toString(exifMap.getDouble(name)));
-            exifMap.getDouble(name);
-            break;
-        }
+  public void setShouldScanBarCodes(boolean shouldScanBarCodes) {
+    if (shouldScanBarCodes && mMultiFormatReader == null) {
+      initBarcodeReader();
+    }
+    this.mShouldScanBarCodes = shouldScanBarCodes;
+    setScanning(mShouldDetectFaces || mShouldGoogleDetectBarcodes || mShouldScanBarCodes || mShouldRecognizeText);
+  }
+
+  public void onBarCodeRead(Result barCode, int width, int height) {
+    String barCodeType = barCode.getBarcodeFormat().toString();
+    if (!mShouldScanBarCodes || !mBarCodeTypes.contains(barCodeType)) {
+      return;
+    }
+
+    RNCameraViewHelper.emitBarCodeReadEvent(this, barCode,  width,  height);
+  }
+
+  public void onBarCodeScanningTaskCompleted() {
+    barCodeScannerTaskLock = false;
+    if(mMultiFormatReader != null) {
+      mMultiFormatReader.reset();
+    }
+  }
+
+  /**
+   * Initial setup of the face detector
+   */
+  private void setupFaceDetector() {
+    mFaceDetector = new RNFaceDetector(mThemedReactContext);
+    mFaceDetector.setMode(mFaceDetectorMode);
+    mFaceDetector.setLandmarkType(mFaceDetectionLandmarks);
+    mFaceDetector.setClassificationType(mFaceDetectionClassifications);
+    mFaceDetector.setTracking(mTrackingEnabled);
+  }
+
+  public void setFaceDetectionLandmarks(int landmarks) {
+    mFaceDetectionLandmarks = landmarks;
+    if (mFaceDetector != null) {
+      mFaceDetector.setLandmarkType(landmarks);
+    }
+  }
+
+  public void setFaceDetectionClassifications(int classifications) {
+    mFaceDetectionClassifications = classifications;
+    if (mFaceDetector != null) {
+      mFaceDetector.setClassificationType(classifications);
+    }
+  }
+
+  public void setFaceDetectionMode(int mode) {
+    mFaceDetectorMode = mode;
+    if (mFaceDetector != null) {
+      mFaceDetector.setMode(mode);
+    }
+  }
+
+  public void setTracking(boolean trackingEnabled) {
+    mTrackingEnabled = trackingEnabled;
+    if (mFaceDetector != null) {
+      mFaceDetector.setTracking(trackingEnabled);
+    }
+  }
+
+  public void setShouldDetectFaces(boolean shouldDetectFaces) {
+    if (shouldDetectFaces && mFaceDetector == null) {
+      setupFaceDetector();
+    }
+    this.mShouldDetectFaces = shouldDetectFaces;
+    setScanning(mShouldDetectFaces || mShouldGoogleDetectBarcodes || mShouldScanBarCodes || mShouldRecognizeText);
+  }
+
+  public void onFacesDetected(WritableArray data) {
+    if (!mShouldDetectFaces) {
+      return;
+    }
+
+    RNCameraViewHelper.emitFacesDetectedEvent(this, data);
+  }
+
+  public void onFaceDetectionError(RNFaceDetector faceDetector) {
+    if (!mShouldDetectFaces) {
+      return;
+    }
+
+    RNCameraViewHelper.emitFaceDetectionErrorEvent(this, faceDetector);
+  }
+
+  @Override
+  public void onFaceDetectingTaskCompleted() {
+    faceDetectorTaskLock = false;
+  }
+
+  /**
+   * Initial setup of the barcode detector
+   */
+  private void setupBarcodeDetector() {
+    mGoogleBarcodeDetector = new RNBarcodeDetector(mThemedReactContext);
+    mGoogleBarcodeDetector.setBarcodeType(mGoogleVisionBarCodeType);
+  }
+
+  public void setShouldGoogleDetectBarcodes(boolean shouldDetectBarcodes) {
+    if (shouldDetectBarcodes && mGoogleBarcodeDetector == null) {
+      setupBarcodeDetector();
+    }
+    this.mShouldGoogleDetectBarcodes = shouldDetectBarcodes;
+    setScanning(mShouldDetectFaces || mShouldGoogleDetectBarcodes || mShouldScanBarCodes || mShouldRecognizeText);
+  }
+
+  public void setGoogleVisionBarcodeType(int barcodeType) {
+    mGoogleVisionBarCodeType = barcodeType;
+    if (mGoogleBarcodeDetector != null) {
+      mGoogleBarcodeDetector.setBarcodeType(barcodeType);
+    }
+  }
+
+  public void setGoogleVisionBarcodeMode(int barcodeMode) {
+    mGoogleVisionBarCodeMode = barcodeMode;
+  }
+
+  public void onBarcodesDetected(WritableArray barcodesDetected) {
+    if (!mShouldGoogleDetectBarcodes) {
+      return;
+    }
+    RNCameraViewHelper.emitBarcodesDetectedEvent(this, barcodesDetected);
+  }
+
+  public void onBarcodeDetectionError(RNBarcodeDetector barcodeDetector) {
+    if (!mShouldGoogleDetectBarcodes) {
+      return;
+    }
+
+    RNCameraViewHelper.emitBarcodeDetectionErrorEvent(this, barcodeDetector);
+  }
+
+  @Override
+  public void onBarcodeDetectingTaskCompleted() {
+    googleBarcodeDetectorTaskLock = false;
+  }
+
+  /**
+   *
+   * Text recognition
+   */
+
+  public void setShouldRecognizeText(boolean shouldRecognizeText) {
+    this.mShouldRecognizeText = shouldRecognizeText;
+    setScanning(mShouldDetectFaces || mShouldGoogleDetectBarcodes || mShouldScanBarCodes || mShouldRecognizeText);
+  }
+
+  public void onTextRecognized(WritableArray serializedData) {
+    if (!mShouldRecognizeText) {
+      return;
+    }
+
+    RNCameraViewHelper.emitTextRecognizedEvent(this, serializedData);
+  }
+
+  @Override
+  public void onTextRecognizerTaskCompleted() {
+    textRecognizerTaskLock = false;
+  }
+
+  /**
+  *
+  * End Text Recognition */
+
+  @Override
+  public void onHostResume() {
+    if (hasCameraPermissions()) {
+      if ((mIsPaused && !isCameraOpened()) || mIsNew) {
+        mIsPaused = false;
+        mIsNew = false;
+        start();
       }
-    }
-    
-    if (exifMap.hasKey(ExifInterface.TAG_GPS_LATITUDE) && 
-        exifMap.hasKey(ExifInterface.TAG_GPS_LONGITUDE) && 
-        exifMap.hasKey(ExifInterface.TAG_GPS_ALTITUDE)) {
-      exifInterface.setLatLong(exifMap.getDouble(ExifInterface.TAG_GPS_LATITUDE),
-                               exifMap.getDouble(ExifInterface.TAG_GPS_LONGITUDE));
-      exifInterface.setAltitude(exifMap.getDouble(ExifInterface.TAG_GPS_ALTITUDE));
+    } else {
+      RNCameraViewHelper.emitMountErrorEvent(this, "Camera permissions not granted - component could not be rendered.");
     }
   }
 
-  public static Bitmap generateSimulatorPhoto(int width, int height) {
-    Bitmap fakePhoto = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-    Canvas canvas = new Canvas(fakePhoto);
-    Paint background = new Paint();
-    background.setColor(Color.BLACK);
-    canvas.drawRect(0, 0, width, height, background);
-    Paint textPaint = new Paint();
-    textPaint.setColor(Color.YELLOW);
-    textPaint.setTextSize(35);
-    Calendar calendar = Calendar.getInstance();
-    SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy.MM.dd G '->' HH:mm:ss z");
-    canvas.drawText(simpleDateFormat.format(calendar.getTime()), width * 0.1f, height * 0.2f, textPaint);
-    canvas.drawText(simpleDateFormat.format(calendar.getTime()), width * 0.2f, height * 0.4f, textPaint);
-    canvas.drawText(simpleDateFormat.format(calendar.getTime()), width * 0.3f, height * 0.6f, textPaint);
-    canvas.drawText(simpleDateFormat.format(calendar.getTime()), width * 0.4f, height * 0.8f, textPaint);
+  @Override
+  public void onHostPause() {
+    if (mIsRecording) {
+      mIsRecordingInterrupted = true;
+    }
+    if (!mIsPaused && isCameraOpened()) {
+      mIsPaused = true;
+      stop();
+    }
+  }
 
-    return fakePhoto;
+  @Override
+  public void onHostDestroy() {
+    if (mFaceDetector != null) {
+      mFaceDetector.release();
+    }
+    if (mGoogleBarcodeDetector != null) {
+      mGoogleBarcodeDetector.release();
+    }
+    mMultiFormatReader = null;
+    stop();
+    mThemedReactContext.removeLifecycleEventListener(this);
+  }
+
+  private boolean hasCameraPermissions() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      int result = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CAMERA);
+      return result == PackageManager.PERMISSION_GRANTED;
+    } else {
+      return true;
+    }
   }
 }
