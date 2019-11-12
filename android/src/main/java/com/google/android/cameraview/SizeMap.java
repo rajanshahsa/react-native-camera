@@ -16,6 +16,7 @@
 
 package com.google.android.cameraview;
 
+
 import androidx.collection.ArrayMap;
 
 import java.util.Set;

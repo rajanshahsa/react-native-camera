@@ -1,5 +1,6 @@
 package org.reactnative.camera.events;
 
+
 import androidx.core.util.Pools;
 
 import org.reactnative.camera.CameraViewManager;

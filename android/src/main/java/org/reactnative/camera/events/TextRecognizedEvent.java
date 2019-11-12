@@ -1,5 +1,6 @@
 package org.reactnative.camera.events;
 
+
 import androidx.core.util.Pools;
 
 import com.facebook.react.bridge.Arguments;

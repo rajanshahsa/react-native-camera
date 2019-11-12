@@ -22,29 +22,25 @@ import android.graphics.Rect;
 import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.os.Build;
-import android.os.HandlerThread;
-import android.os.Handler;
 import android.os.Parcel;
 import android.os.Parcelable;
-import androidx.annotation.IntDef;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.core.os.ParcelableCompat;
-import androidx.core.os.ParcelableCompatCreatorCallbacks;
-import androidx.core.view.ViewCompat;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.graphics.SurfaceTexture;
 
+import androidx.annotation.IntDef;
+import androidx.annotation.NonNull;
+import androidx.core.os.ParcelableCompat;
+import androidx.core.os.ParcelableCompatCreatorCallbacks;
+import androidx.core.view.ViewCompat;
+
 import com.facebook.react.bridge.ReadableMap;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
 
@@ -93,10 +89,6 @@ public class CameraView extends FrameLayout {
 
     private final DisplayOrientationDetector mDisplayOrientationDetector;
 
-    protected HandlerThread mBgThread;
-    protected Handler mBgHandler;
-
-
     public CameraView(Context context, boolean fallbackToOldApi) {
         this(context, null, fallbackToOldApi);
     }
@@ -108,13 +100,6 @@ public class CameraView extends FrameLayout {
     @SuppressWarnings("WrongConstant")
     public CameraView(Context context, AttributeSet attrs, int defStyleAttr, boolean fallbackToOldApi) {
         super(context, attrs, defStyleAttr);
-
-        // bg hanadler for non UI heavy work
-        mBgThread = new HandlerThread("RNCamera-Handler-Thread");
-        mBgThread.start();
-        mBgHandler = new Handler(mBgThread.getLooper());
-
-
         if (isInEditMode()){
             mCallbacks = null;
             mDisplayOrientationDetector = null;
@@ -127,11 +112,11 @@ public class CameraView extends FrameLayout {
         final PreviewImpl preview = createPreviewImpl(context);
         mCallbacks = new CallbackBridge();
         if (fallbackToOldApi || Build.VERSION.SDK_INT < 21) {
-            mImpl = new Camera1(mCallbacks, preview, mBgHandler);
+            mImpl = new Camera1(mCallbacks, preview);
         } else if (Build.VERSION.SDK_INT < 23) {
-            mImpl = new Camera2(mCallbacks, preview, context, mBgHandler);
+            mImpl = new Camera2(mCallbacks, preview, context);
         } else {
-            mImpl = new Camera2Api23(mCallbacks, preview, context, mBgHandler);
+            mImpl = new Camera2Api23(mCallbacks, preview, context);
         }
 
         // Display orientation detector
@@ -142,13 +127,6 @@ public class CameraView extends FrameLayout {
                 mImpl.setDeviceOrientation(deviceOrientation);
             }
         };
-    }
-
-    public void cleanup(){
-        if(mBgThread != null){
-            mBgThread.quitSafely();
-            mBgThread = null;
-        }
     }
 
     @NonNull
@@ -242,7 +220,6 @@ public class CameraView extends FrameLayout {
     protected Parcelable onSaveInstanceState() {
         SavedState state = new SavedState(super.onSaveInstanceState());
         state.facing = getFacing();
-        state.cameraId = getCameraId();
         state.ratio = getAspectRatio();
         state.autoFocus = getAutoFocus();
         state.flash = getFlash();
@@ -264,7 +241,6 @@ public class CameraView extends FrameLayout {
         SavedState ss = (SavedState) state;
         super.onRestoreInstanceState(ss.getSuperState());
         setFacing(ss.facing);
-        setCameraId(ss.cameraId);
         setAspectRatio(ss.ratio);
         setAutoFocus(ss.autoFocus);
         setFlash(ss.flash);
@@ -289,9 +265,9 @@ public class CameraView extends FrameLayout {
                 stop();
             }
             if (Build.VERSION.SDK_INT < 23) {
-                mImpl = new Camera2(mCallbacks, mImpl.mPreview, mContext, mBgHandler);
+                mImpl = new Camera2(mCallbacks, mImpl.mPreview, mContext);
             } else {
-                mImpl = new Camera2Api23(mCallbacks, mImpl.mPreview, mContext, mBgHandler);
+                mImpl = new Camera2Api23(mCallbacks, mImpl.mPreview, mContext);
             }
         } else {
             if (mImpl instanceof Camera1) {
@@ -301,7 +277,7 @@ public class CameraView extends FrameLayout {
             if (wasOpened) {
                 stop();
             }
-            mImpl = new Camera1(mCallbacks, mImpl.mPreview, mBgHandler);
+            mImpl = new Camera1(mCallbacks, mImpl.mPreview);
         }
         start();
     }
@@ -318,7 +294,7 @@ public class CameraView extends FrameLayout {
             //store the state and restore this state after fall back to Camera1
             Parcelable state=onSaveInstanceState();
             // Camera2 uses legacy hardware layer; fall back to Camera1
-            mImpl = new Camera1(mCallbacks, createPreviewImpl(getContext()), mBgHandler);
+            mImpl = new Camera1(mCallbacks, createPreviewImpl(getContext()));
             onRestoreInstanceState(state);
             mImpl.start();
         }
@@ -326,7 +302,7 @@ public class CameraView extends FrameLayout {
 
     /**
      * Stop camera preview and close the device. This is typically called from
-     * {@link Activity#onPause()}.
+     * {@link Activity#onPause()} ()}.
      */
     public void stop() {
         mImpl.stop();
@@ -408,36 +384,11 @@ public class CameraView extends FrameLayout {
         return mImpl.getFacing();
     }
 
-     /**
-     * Chooses camera by its camera iD
-     *
-     * @param id The camera ID
-     */
-    public void setCameraId(String id) {
-      mImpl.setCameraId(id);
-    }
-
-    /**
-     * Gets the currently set camera ID
-     *
-     * @return The camera facing.
-     */
-    public String getCameraId() {
-      return mImpl.getCameraId();
-    }
-
     /**
      * Gets all the aspect ratios supported by the current camera.
      */
     public Set<AspectRatio> getSupportedAspectRatios() {
         return mImpl.getSupportedAspectRatios();
-    }
-
-    /**
-     * Gets all the camera IDs supported by the phone as a String
-     */
-    public List<Properties> getCameraIds() {
-        return mImpl.getCameraIds();
     }
 
     /**
@@ -460,7 +411,7 @@ public class CameraView extends FrameLayout {
     public AspectRatio getAspectRatio() {
         return mImpl.getAspectRatio();
     }
-
+    
     /**
      * Gets all the picture sizes for particular ratio supported by the current camera.
      *
@@ -469,7 +420,7 @@ public class CameraView extends FrameLayout {
     public SortedSet<Size> getAvailablePictureSizes(@NonNull AspectRatio ratio) {
         return mImpl.getAvailablePictureSizes(ratio);
     }
-
+    
     /**
      * Sets the size of taken pictures.
      *
@@ -478,7 +429,7 @@ public class CameraView extends FrameLayout {
     public void setPictureSize(@NonNull Size size) {
         mImpl.setPictureSize(size);
     }
-
+    
     /**
      * Gets the size of pictures that will be taken.
      */
@@ -527,11 +478,11 @@ public class CameraView extends FrameLayout {
         return mImpl.getFlash();
     }
 
-    public void setExposureCompensation(float exposure) {
+    public void setExposureCompensation(int exposure) {
         mImpl.setExposureCompensation(exposure);
     }
 
-    public float getExposureCompensation() {
+    public int getExposureCompensation() {
         return mImpl.getExposureCompensation();
     }
 
@@ -544,7 +495,7 @@ public class CameraView extends FrameLayout {
     public int getCameraOrientation() {
         return mImpl.getCameraOrientation();
     }
-
+    
     /**
      * Sets the auto focus point.
      *
@@ -605,11 +556,11 @@ public class CameraView extends FrameLayout {
     public void stopRecording() {
         mImpl.stopRecording();
     }
-
+    
     public void resumePreview() {
         mImpl.resumePreview();
     }
-
+    
     public void pausePreview() {
         mImpl.pausePreview();
     }
@@ -695,8 +646,6 @@ public class CameraView extends FrameLayout {
         @Facing
         int facing;
 
-        String cameraId;
-
         AspectRatio ratio;
 
         boolean autoFocus;
@@ -704,7 +653,7 @@ public class CameraView extends FrameLayout {
         @Flash
         int flash;
 
-        float exposure;
+        int exposure;
 
         float focusDepth;
 
@@ -713,18 +662,17 @@ public class CameraView extends FrameLayout {
         int whiteBalance;
 
         boolean scanning;
-
+        
         Size pictureSize;
 
         @SuppressWarnings("WrongConstant")
         public SavedState(Parcel source, ClassLoader loader) {
             super(source);
             facing = source.readInt();
-            cameraId = source.readString();
             ratio = source.readParcelable(loader);
             autoFocus = source.readByte() != 0;
             flash = source.readInt();
-            exposure = source.readFloat();
+            exposure = source.readInt();
             focusDepth = source.readFloat();
             zoom = source.readFloat();
             whiteBalance = source.readInt();
@@ -740,11 +688,10 @@ public class CameraView extends FrameLayout {
         public void writeToParcel(Parcel out, int flags) {
             super.writeToParcel(out, flags);
             out.writeInt(facing);
-            out.writeString(cameraId);
             out.writeParcelable(ratio, 0);
             out.writeByte((byte) (autoFocus ? 1 : 0));
             out.writeInt(flash);
-            out.writeFloat(exposure);
+            out.writeInt(exposure);
             out.writeFloat(focusDepth);
             out.writeFloat(zoom);
             out.writeInt(whiteBalance);
