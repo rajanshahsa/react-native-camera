@@ -32,6 +32,7 @@ import android.graphics.SurfaceTexture;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.os.ParcelableCompat;
 import androidx.core.os.ParcelableCompatCreatorCallbacks;
 import androidx.core.view.ViewCompat;
