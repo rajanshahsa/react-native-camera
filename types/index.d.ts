@@ -169,15 +169,16 @@ export interface RNCameraProps {
   // -- BARCODE PROPS
   barCodeTypes?: Array<keyof BarCodeType>;
   googleVisionBarcodeType?: Constants['GoogleVisionBarcodeDetection']['BarcodeType'];
+  googleVisionBarcodeMode?: Constants['GoogleVisionBarcodeDetection']['BarcodeMode'];
   onBarCodeRead?(event: {
     data: string;
     rawData?: string;
     type: keyof BarCodeType;
     /**
-     * @description For Android use `[Point<string>, Point<string>]`
+     * @description For Android use `{ width: number, height: number, origin: Array<Point<string>> }`
      * @description For iOS use `{ origin: Point<string>, size: Size<string> }`
      */
-    bounds: [Point<string>, Point<string>] | { origin: Point<string>; size: Size<string> };
+    bounds: { width: number, height: number, origin: Array<Point<string>> } | { origin: Point<string>; size: Size<string> };
   }): void;
 
   onGoogleVisionBarcodesDetected?(event: {
@@ -234,7 +235,7 @@ interface Size<T = number> {
   height: T;
 }
 
-interface Barcode {
+export interface Barcode {
   bounds: {
     size: Size;
     origin: Point;
@@ -242,6 +243,7 @@ interface Barcode {
   data: string;
   dataRaw: string;
   type: BarcodeType;
+  format?: string;
   addresses?: {
     addressesType?: "UNKNOWN" | "Work" | "Home";
     addressLines?: string[];
@@ -293,7 +295,7 @@ interface Barcode {
   message?: string;
 }
 
-type BarcodeType =
+export type BarcodeType =
   |"EMAIL"
   |"PHONE"
   |"CALENDAR_EVENT"
@@ -305,20 +307,21 @@ type BarcodeType =
   |"TEXT"
   |"ISBN"
   |"PRODUCT"
+  |"URL"
 
-interface Email {
+export interface Email {
   address?: string;
   body?: string;
   subject?: string;
   emailType?: "UNKNOWN" | "Work" | "Home";
 }
 
-interface Phone {
+export interface Phone {
   number?: string;
   phoneType?: "UNKNOWN" | "Work" | "Home" | "Fax" | "Mobile";
 }
 
-interface Face {
+export interface Face {
   faceID?: number;
   bounds: {
     size: Size;
@@ -342,7 +345,7 @@ interface Face {
   rollAngle?: number;
 }
 
-interface TrackedTextFeature {
+export interface TrackedTextFeature {
   type: 'block' | 'line' | 'element';
   bounds: {
     size: Size;
@@ -361,17 +364,16 @@ interface TakePictureOptions {
   mirrorImage?: boolean;
   doNotSave?: boolean;
   pauseAfterCapture?: boolean;
+  writeExif?: boolean | { [name: string]: any };
 
   /** Android only */
-  skipProcessing?: boolean;
   fixOrientation?: boolean;
-  writeExif?: boolean | { [name: string]: any };
 
   /** iOS only */
   forceUpOrientation?: boolean;
 }
 
-interface TakePictureResponse {
+export interface TakePictureResponse {
   width: number;
   height: number;
   uri: string;
@@ -395,7 +397,7 @@ interface RecordOptions {
   codec?: keyof VideoCodec | VideoCodec[keyof VideoCodec];
 }
 
-interface RecordResponse {
+export interface RecordResponse {
   /** Path to the video saved on your app's cache directory. */
   uri: string;
   videoOrientation: number;

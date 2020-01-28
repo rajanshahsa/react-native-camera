@@ -11,7 +11,6 @@ import com.facebook.react.uimanager.events.RCTEventEmitter;
 import com.google.zxing.Result;
 import com.google.zxing.ResultPoint;
 
-import java.util.Date;
 import java.util.Formatter;
 
 public class BarCodeReadEvent extends Event<BarCodeReadEvent> {
